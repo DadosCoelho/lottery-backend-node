@@ -1,0 +1,31 @@
+{
+    "rules": {
+      "users": {
+        "$uid": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid",
+          "role": {
+            ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
+          },
+          "is_premium": {
+            ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
+          }
+        }
+      },
+      "bets": {
+        "$uid": {
+          ".read": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      },
+      "group_bets": {
+        "$group_bet_id": {
+          ".read": "auth != null && (data.child('participants').child(auth.uid).exists() || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+          ".write": "auth != null && (data.child('creator').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+          "participants": {
+            ".write": "auth != null && (data.child('creator').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin' || !data.child('participants').child(auth.uid).exists())"
+          }
+        }
+      }
+    }
+  }

@@ -1,0 +1,39 @@
+# Dependências do Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Arquivos de build ou distribuição
+dist/
+build/
+
+# Arquivos de configuração sensíveis
+*.key
+*.pem
+*.cert
+
+# Logs
+*.log
+logs/
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
+
+# Ferramentas de desenvolvimento
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Segredo
+serviceAccountKey.json
