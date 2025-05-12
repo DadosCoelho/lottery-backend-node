@@ -1,6 +1,6 @@
 const express = require('express');
 const admin = require('../config/firebase');
-const requireAuth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const router = express.Router();
 
 const checkAdmin = async (uid) => {
@@ -8,7 +8,7 @@ const checkAdmin = async (uid) => {
   return userData && userData.role === 'admin';
 };
 
-router.post('/set_role', requireAuth, async (req, res) => {
+router.post('/set_role', authenticateToken, async (req, res) => {
   const { uid, role, is_premium = false } = req.body;
   const requesterUid = req.user.uid;
 
@@ -25,34 +25,67 @@ router.post('/set_role', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/profile', requireAuth, async (req, res) => {
-  const uid = req.user.uid;
-  const userData = (await admin.database().ref(`users/${uid}`).once('value')).val();
-  if (!userData) {
-    return res.status(404).json({ error: 'Usuário não encontrado' });
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    const userData = userSnapshot.val();
+    
+    if (!userData) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+    
+    return res.status(200).json({
+      email: userData.email,
+      name: userData.name,
+      role: userData.role,
+      is_premium: userData.is_premium
+    });
+  } catch (error) {
+    return res.status(500).json({ error: `Erro ao obter perfil: ${error.message}` });
   }
-  return res.status(200).json({
-    uid,
-    email: userData.email,
-    name: userData.name,
-    role: userData.role,
-    is_premium: userData.is_premium
-  });
 });
 
-router.put('/profile', requireAuth, async (req, res) => {
+router.put('/profile', authenticateToken, async (req, res) => {
+  console.log('Requisição para atualizar perfil:', { user: req.user, body: req.body });
   const { name } = req.body;
-  const uid = req.user.uid;
-
+  
   if (!name || name.length < 2) {
-    return res.status(400).json({ error: 'O nome deve ter pelo menos 2 caracteres' });
+    return res.status(400).json({ error: 'Nome inválido (mínimo 2 caracteres)' });
   }
-
+  
+  if (!req.user || !req.user.uid) {
+    console.error('UID não encontrado no token:', req.user);
+    return res.status(401).json({ error: 'Token de autenticação inválido' });
+  }
+  
   try {
+    const uid = req.user.uid;
+    console.log(`Atualizando perfil para o usuário: ${uid}, novo nome: ${name}`);
+    
+    // Verifica se o usuário existe
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    if (!userSnapshot.exists()) {
+      console.error(`Usuário não encontrado: ${uid}`);
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+    
+    // Atualiza apenas o nome
     await admin.database().ref(`users/${uid}`).update({ name });
-    return res.status(200).json({ message: 'Perfil atualizado com sucesso' });
+    console.log(`Perfil atualizado com sucesso para: ${uid}`);
+    
+    return res.status(200).json({ 
+      message: 'Perfil atualizado com sucesso',
+      user: {
+        name,
+        ...userSnapshot.val(),
+        // Garante que o nome reflete a atualização
+        name: name
+      }
+    });
   } catch (error) {
-    return res.status(400).json({ error: `Erro ao atualizar perfil: ${error.message}` });
+    console.error(`Erro ao atualizar perfil: ${error.message}`, error);
+    return res.status(500).json({ error: `Erro ao atualizar perfil: ${error.message}` });
   }
 });
 

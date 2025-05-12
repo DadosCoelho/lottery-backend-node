@@ -1,27 +1,70 @@
 const express = require('express');
 const admin = require('../config/firebase');
-const requireAuth = require('../middleware/auth');
 const Bet = require('../models/bet');
+const { authenticateToken } = require('../middleware/auth');
+
 const router = express.Router();
 
-router.post('/create', requireAuth, async (req, res) => {
-  const { modality, initial_contest, final_contest, numbers, clovers = [] } = req.body;
-  const userId = req.user.uid;
+// Criar nova aposta
+router.post('/create', authenticateToken, async (req, res) => {
+  const { modality, numbers, clovers, initial_contest, final_contest } = req.body;
+  const uid = req.user.uid;
 
-  if (!Bet.validate(modality, numbers, clovers)) {
-    return res.status(400).json({ error: 'Dados de aposta inválidos' });
+  try {
+    // Verificar se o usuário existe
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    const user = userSnapshot.val();
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Criar aposta
+    const newBet = new Bet(
+      null, // id será gerado pelo Firebase
+      uid,
+      modality,
+      numbers,
+      clovers || [],
+      initial_contest,
+      final_contest,
+      new Date().toISOString()
+    );
+
+    const betRef = await admin.database().ref('bets').push(newBet.toJSON());
+    
+    return res.status(201).json({
+      message: 'Aposta criada com sucesso',
+      bet_id: betRef.key,
+      bet: newBet.toJSON()
+    });
+  } catch (error) {
+    return res.status(500).json({ error: `Erro ao criar aposta: ${error.message}` });
   }
-
-  const bet = new Bet(userId, modality, initial_contest, final_contest, numbers, clovers);
-  const betRef = admin.database().ref(`bets/${userId}`).push();
-  await betRef.set(bet.toJSON());
-  return res.status(201).json({ message: 'Aposta criada com sucesso', bet_id: betRef.key });
 });
 
-router.get('/list', requireAuth, async (req, res) => {
-  const userId = req.user.uid;
-  const bets = (await admin.database().ref(`bets/${userId}`).once('value')).val() || {};
-  return res.status(200).json(bets);
+// Obter apostas do usuário
+router.get('/user', authenticateToken, async (req, res) => {
+  const uid = req.user.uid;
+
+  try {
+    const betsSnapshot = await admin.database()
+      .ref('bets')
+      .orderByChild('user_id')
+      .equalTo(uid)
+      .once('value');
+    
+    const bets = [];
+    betsSnapshot.forEach(snapshot => {
+      bets.push({
+        id: snapshot.key,
+        ...snapshot.val()
+      });
+    });
+
+    return res.status(200).json(bets);
+  } catch (error) {
+    return res.status(500).json({ error: `Erro ao obter apostas: ${error.message}` });
+  }
 });
 
 module.exports = router;
