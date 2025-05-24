@@ -1,147 +1,153 @@
-# ConfLoto - Backend (Node.js)
+# API de Loterias com Node.js e Express
 
-## Descrição
-Este é o backend do sistema **ConfLoto**, uma aplicação web para gerenciamento de apostas em loterias brasileiras, incluindo Mega-Sena, Lotofácil, +Milionária, Quina e Dia de Sorte. Construído com **Node.js** e **Express**, utiliza **Firebase** para autenticação e armazenamento de dados no **Realtime Database**. O backend fornece APIs para autenticação, gerenciamento de usuários, apostas individuais e bolões.
+Esta é a API backend para a aplicação "Lottery Online", construída com Node.js e o framework Express. Ela se integra com o Firebase para autenticação de usuários e persistência de dados (Realtime Database), além de consumir uma API externa para resultados de loterias.
 
-## Funcionalidades
-- **Autenticação**: Registro, login e validação de usuários com tokens JWT.
-- **Gerenciamento de Usuários**: Visualização, edição de perfis e administração de papéis (comum, premium, admin).
-- **Apostas Individuais**: Criação e listagem de apostas validadas conforme as regras de cada loteria.
-- **Bolões**: Criação (restrita a usuários premium) e participação em bolões, com gerenciamento de participantes.
-- **Administração**: Configuração inicial de administradores via script e gerenciamento de dados (parcialmente implementado).
+## Funcionalidades Principais
 
-## Tecnologias Utilizadas
-- **Node.js** (16+): Ambiente de execução.
-- **Express**: Framework para construção de APIs.
-- **Firebase**:
-  - **Authentication**: Gerenciamento de usuários.
-  - **Realtime Database**: Armazenamento de apostas, bolões e dados de usuários.
-- **Dependências**:
-  - `cors`: Suporte a requisições cross-origin.
-  - `firebase-admin`: Integração com Firebase.
-- **Ferramentas de Desenvolvimento**:
-  - `nodemon`: Recarregamento automático em desenvolvimento.
-  - `jest`: Testes unitários.
-  - `eslint`: Linting de código.
-
-## Estrutura do Projeto
-```
-lottery-backend-node/
-├── scripts/
-│   └── set_admin.js           # Script para configurar usuário admin
-├── src/
-│   ├── config/
-│   │   └── firebase.js       # Configuração do Firebase
-│   ├── middleware/
-│   │   └── auth.js           # Middleware de autenticação
-│   ├── models/
-│   │   ├── bet.js            # Modelo de aposta individual
-│   │   ├── groupBet.js       # Modelo de bolão
-│   │   └── user.js           # Modelo de usuário
-│   ├── routes/
-│   │   ├── auth.js           # Rotas de autenticação
-│   │   ├── bet.js            # Rotas de apostas
-│   │   ├── groupBet.js       # Rotas de bolões
-│   │   └── user.js           # Rotas de gerenciamento de usuários
-│   └── index.js              # Ponto de entrada do backend
-├── .env                      # Variáveis de ambiente
-├── .gitignore
-├── firebase_rules.json       # Regras de segurança do Firebase
-├── package.json
-├── README.markdown           # Este arquivo
-├── serviceAccountKey.json    # Credenciais do Firebase
-└── test_firebase.js          # Script de teste de conexão com Firebase
-```
-
-## Pré-requisitos
-- **Node.js** (16+): [Download](https://nodejs.org/).
-- **Firebase**:
-  - Crie um projeto no [Firebase Console](https://console.firebase.google.com/).
-  - Habilite **Authentication** (método Email/Senha).
-  - Configure o **Realtime Database** e obtenha as credenciais.
-- **Conexão à internet**: Necessária para acessar o Firebase.
+*   **Autenticação de Usuários:** Gerenciamento de login e registro de usuários utilizando o Firebase Authentication.
+*   **Gerenciamento de Apostas:** Criação, consulta e acompanhamento de apostas individuais e em grupo, com dados persistidos no Firebase Realtime Database.
+*   **Consulta de Resultados de Loterias:** Atua como um proxy para uma API externa, permitindo consultar resultados de jogos e concursos específicos de diversas loterias.
+*   **Estrutura Modular:** Organização clara de controladores, rotas e middlewares para facilitar a manutenção e a escalabilidade do projeto.
 
 ## Instalação
-1. Clone o repositório:
-   ```bash
-   git clone https://github.com/<seu-usuario>/lottery-backend-node.git
-   cd lottery-backend-node
-   ```
-2. Instale as dependências:
-   ```bash
-   npm install
-   ```
-3. Configure as variáveis de ambiente em `.env`:
-   ```env
-   FIREBASE_DATABASE_URL=https://conf-loto-default-rtdb.firebaseio.com
-   PORT=5000
-   ```
-4. Adicione o arquivo `serviceAccountKey.json` na raiz do projeto (obtido no Firebase Console).
-5. Inicie o servidor de desenvolvimento:
-   ```bash
-   npm run dev
-   ```
-   - O backend estará disponível em `http://localhost:5000`.
 
-## Uso
-- **Teste de Conexão**: Execute `node test_firebase.js` para verificar a conexão com o Firebase.
-- **Rotas da API**:
-  - `/auth/register`: Registra um novo usuário (POST).
-  - `/auth/login`: Realiza login e retorna dados do usuário (POST).
-  - `/user/profile`: Obtém ou atualiza o perfil do usuário (GET, PUT).
-  - `/user/set_role`: Altera o papel de um usuário (admin, POST).
-  - `/bet/create`: Cria uma aposta individual (POST).
-  - `/bet/list`: Lista apostas do usuário (GET).
-  - `/group_bet/create`: Cria um bolão (premium, POST).
-  - `/group_bet/join/:group_bet_id`: Ingressa em um bolão (POST).
-- **Configuração de Admin**: Execute o script para configurar um usuário como administrador:
-  ```bash
-  npm run set-admin
-  ```
-  - Edite `scripts/set_admin.js` com o UID do usuário desejado.
+Para configurar e executar o projeto localmente, siga os passos abaixo:
 
-## Desenvolvimento
-- **Depuração**: Verifique logs no console ou use ferramentas como `Postman` para testar APIs.
-- **Hot Reload**: O `nodemon` recarrega automaticamente o servidor ao salvar alterações.
-- **Linting**:
-  ```bash
-  npm run lint
-  ```
-- **Testes**:
-  ```bash
-  npm run test
-  ```
+1.  **Clone o repositório:**
+    ```bash
+    git clone https://github.com/DadosCoelho/lottery-backend-node.git
+    cd lottery-backend-node
+    ```
+2.  **Instale as dependências:**
+    ```bash
+    npm install
+    ```
 
-## Build e Deploy
-1. Build (execução direta, sem build adicional):
-   ```bash
-   npm start
-   ```
-2. Hospedagem: Use plataformas como **Heroku** ou **Google Cloud Run**.
-   - Configure o `serviceAccountKey.json` e variáveis de ambiente na plataforma.
-   - Exemplo para Heroku:
-     ```bash
-     heroku create
-     git push heroku main
-     ```
+## Configuração
 
-## Próximos Passos
-- Implementar integração com API de resultados de loterias (ex.: Caixa Econômica).
-- Configurar notificações via Telegram usando a biblioteca `telegraf`.
-- Adicionar testes unitários para cobrir 80% das funcionalidades críticas.
-- Implementar cache (ex.: Redis) para endpoints frequentemente acessados.
-- Configurar logging de erros para monitoramento em produção.
+Para que a API funcione corretamente, é necessário configurar algumas variáveis de ambiente e credenciais do Firebase.
 
-## Contribuição
-1. Faça um fork do repositório.
-2. Crie uma branch: `git checkout -b minha-feature`.
-3. Commit: `git commit -m "Adiciona minha feature"`.
-4. Push: `git push origin minha-feature`.
-5. Abra um Pull Request.
+1.  **Variáveis de Ambiente (`.env`):**
+    Crie um arquivo `.env` na raiz do projeto (`lottery-backend-node/`) com o seguinte conteúdo:
 
-## Licença
-MIT License.
+    ```
+    PORT=3000
+    NODE_ENV=development
+    ```
+    *   `PORT`: Define a porta em que a API será executada (ex: `3000`).
+    *   `NODE_ENV`: Define o ambiente de execução (`development` para desenvolvimento, `production` para produção).
 
-## Contato
-- **Email**: <seu-email@example.com>
-- **GitHub**: <seu-usuario>
+2.  **Credenciais do Firebase Admin SDK (`conf-loto-firebase-adminsdk-fbsvc-2cee54fe44.json`):**
+    Este projeto utiliza o Firebase Admin SDK para funcionalidades como verificação de tokens de autenticação e gerenciamento de regras do Realtime Database. É **essencial** que o arquivo de credenciais do Firebase Admin SDK esteja presente na raiz do projeto.
+
+    *   **Obtenção:** Você deve gerar este arquivo no console do Firebase (Vá em `Configurações do Projeto` > `Contas de Serviço` > `Gerar nova chave privada`).
+    *   **Localização:** Renomeie o arquivo baixado para `conf-loto-firebase-adminsdk-fbsvc-2cee54fe44.json` e coloque-o diretamente na pasta `lottery-backend-node/`.
+    *   **SEGURANÇA:** Este arquivo contém chaves sensíveis e **NÃO DEVE SER VERSIONADO** em sistemas de controle de versão públicos (já está incluído no `.gitignore`).
+
+3.  **Regras de Segurança do Firebase Realtime Database (`database.rules.json`):**
+    O arquivo `database.rules.json` define as regras de acesso ao Firebase Realtime Database. O backend tenta carregar e aplicar essas regras na inicialização (especialmente em ambiente de desenvolvimento). Certifique-se de que este arquivo esteja acessível no caminho `../database.rules.json` a partir da raiz do backend (no repositório completo, ele geralmente fica na raiz do frontend).
+
+    *   **Exemplo de Regras (para referência):**
+        ```json
+        {
+          "rules": {
+            ".read": "auth != null",
+            ".write": "auth != null",
+            "bets": {
+              ".read": "auth != null",
+              ".write": "auth != null",
+              "$betId": {
+                ".read": "auth != null && data.child('userId').val() === auth.uid",
+                ".write": "auth != null && (newData.child('userId').val() === auth.uid || !data.exists())"
+              }
+            },
+            "users": {
+              "$userId": {
+                ".read": "auth != null && auth.uid === $userId",
+                ".write": "auth != null && auth.uid === $userId",
+                "bets": {
+                  ".read": "auth != null && auth.uid === $userId",
+                  ".write": "auth != null && auth.uid === $userId"
+                }
+              }
+            }
+          }
+        }
+        ```
+        Estas regras garantem que apenas usuários autenticados possam ler/escrever dados e que cada usuário só possa acessar suas próprias apostas e perfil.
+
+## Executando a API
+
+Você pode executar a API em diferentes modos:
+
+### Modo Desenvolvimento
+
+Para iniciar a API com `nodemon` (que monitora alterações nos arquivos e reinicia o servidor automaticamente):
+
+```
+npm run dev
+```
+### Modo Produção
+Para iniciar a API em modo de produção:
+```
+npm start
+```
+### Modo Seguro (Verificação de Credenciais)
+Existe um script start:safe que verifica a presença dos arquivos de credenciais e regras do Firebase antes de iniciar o servidor, fornecendo avisos se eles não forem encontrados.
+```
+npm run start:safe
+```
+### Rotas Disponíveis
+A API oferece as seguintes rotas:
+
+### Rotas Públicas
+* GET /: Rota padrão que retorna uma mensagem de status (API de Loterias está ativa!).
+* GET /api/teste: Rota de teste simples.
+* POST /api/auth/login: Autentica um usuário com e-mail e senha.
+* POST /api/auth/register: Registra um novo usuário com e-mail e senha.
+* GET /api/loteria/:jogo/:concurso: Rota de proxy para a API externa de loterias. Permite consultar resultados de jogos e concursos específicos (ex: /api/loteria/megasena/2500).
+### Rotas Protegidas (Requerem Autenticação com Token Bearer no cabeçalho Authorization)
+* GET /api/auth/check: Verifica o status de autenticação do usuário.
+* GET /api/users/profile: Obtém o perfil do usuário autenticado.
+* POST /api/bets: Cria uma nova aposta individual.
+* POST /api/bets/group: Cria uma nova aposta em grupo.
+* GET /api/bets: Obtém todas as apostas do usuário autenticado.
+* GET /api/bets/:id: Obtém os detalhes de uma aposta específica do usuário autenticado.
+* GET /api/items: Exemplo de rota para obter uma lista de itens.
+* GET /api/items/:id: Exemplo de rota para obter um item específico pelo ID.
+* POST /api/items: Exemplo de rota para criar um novo item.
+### Estrutura do Projeto
+```
+lottery-backend-node/
+├── config/             # Configurações (ex: Firebase)
+│   └── firebase.js     # Configuração e inicialização do Firebase Admin SDK
+├── controllers/        # Lógica de negócio para cada rota (auth, bet, example)
+│   ├── authController.js
+│   ├── betController.js
+│   └── exampleController.js
+├── middlewares/        # Middlewares (ex: autenticação)
+│   └── authMiddleware.js
+├── routes/             # Definições de rotas da API
+│   ├── auth.js         # Rotas de autenticação
+│   ├── bets.js         # Rotas de apostas
+│   ├── items.js        # Rotas de exemplo
+│   └── index.js        # Agregador de todas as rotas
+├── .env                # Variáveis de ambiente (NÃO VERSIONADO)
+├── .gitignore          # Arquivos e pastas a serem ignorados pelo Git
+├── package.json        # Dependências e scripts do projeto
+├── README.md           # Este arquivo
+├── server.js           # Arquivo principal do servidor Express
+├── start.js            # Script para iniciar o servidor com verificações
+└── conf-loto-firebase-adminsdk-fbsvc-2cee54fe44.json # 
+```
+### Credenciais do Firebase Admin SDK (NÃO VERSIONADO)
+## Dependências
+As principais dependências utilizadas neste projeto são:
+
+* express: Framework web robusto para Node.js.
+* cors: Middleware para habilitar Cross-Origin Resource Sharing (CORS).
+* dotenv: Carrega variáveis de ambiente de um arquivo .env.
+* firebase: SDK do Firebase para o lado do cliente (usado para autenticação).
+* firebase-admin: SDK do Firebase para o lado do servidor (usado para verificar tokens de autenticação e gerenciar o Realtime Database).
+* axios: Cliente HTTP baseado em Promises para fazer requisições a APIs externas.
+* nodemon (devDependencies): Ferramenta para monitorar alterações e reiniciar o servidor automaticamente em desenvolvimento.
