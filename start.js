@@ -36,7 +36,7 @@ server.on('error', (error) => {
 // Verificar se o servidor está online após 3 segundos
 setTimeout(() => {
   const http = require('http');
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 'https://lottery-backend-node.onrender.com'
   
   const req = http.request({
     host: 'localhost',
