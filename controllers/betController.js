@@ -1,5 +1,43 @@
-const { adminDatabase } = require('../config/firebase');
+const { adminDatabase, adminAuth } = require('../config/firebase');
 const axios = require('axios'); // Certifique-se de que axios está importado
+
+// --- Funções Auxiliares ---
+
+/**
+ * Busca o UID de um usuário a partir do seu e-mail no Firebase Authentication.
+ * @param {string} email - O e-mail do usuário.
+ * @returns {Promise<string|null>} O UID do usuário ou null se não encontrado.
+ */
+async function getUidByEmail(email) {
+  try {
+    const userRecord = await adminAuth.getUserByEmail(email);
+    return userRecord.uid;
+  } catch (error) {
+    // Se o usuário não for encontrado, getUserByEmail lança um erro.
+    // Capturamos e retornamos null ou lançamos um erro específico.
+    console.warn(`[getUidByEmail] Usuário com email ${email} não encontrado no Firebase Auth.`);
+    return null;
+  }
+}
+
+/**
+ * Busca o perfil de um usuário no Realtime Database a partir do seu UID.
+ * @param {string} uid - O UID do usuário.
+ * @returns {Promise<object|null>} O objeto de perfil do usuário ou null se não encontrado.
+ */
+async function getUserProfileByUid(uid) {
+  try {
+    const userRef = adminDatabase.ref(`users/${uid}/profile`);
+    const snapshot = await userRef.once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  } catch (error) {
+    console.error(`[getUserProfileByUid] Erro ao buscar perfil do usuário ${uid}:`, error);
+    return null;
+  }
+}
+
+
+// --- Funções de Controlador (existentes e modificadas) ---
 
 // Criar uma nova aposta
 exports.createBet = async (req, res) => {
@@ -106,32 +144,63 @@ exports.createBet = async (req, res) => {
 exports.createGroupBet = async (req, res) => {
   try {
     const { jogo, concurso, numeros, teimosinha, qtdTeimosinha, grupo } = req.body;
-    const userId = req.user.uid;
+    const creatorUid = req.user.uid; // O UID do usuário autenticado
+    const creatorEmail = req.user.email; // O e-mail do usuário autenticado
 
-    // Validações básicas
-    if (!jogo || !concurso || !numeros || !grupo || !grupo.nome || !grupo.participantes) {
+    // 1. Validações iniciais
+    if (!jogo || !concurso || !numeros || !grupo || !grupo.nome || !grupo.participantes || grupo.participantes.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Dados incompletos. Informe jogo, concurso, números e dados do grupo.'
+        message: 'Dados incompletos. Informe jogo, concurso, números e dados do grupo (nome e participantes).'
       });
     }
 
-    if (grupo.participantes.length < 2) {
+    // 2. Verificar se o criador é um usuário premium e se o perfil existe no Realtime Database
+    const creatorProfileSnapshot = await adminDatabase.ref(`users/${creatorUid}`).once('value');
+    const creatorProfile = creatorProfileSnapshot.val();
+
+    if (!creatorProfile) {
+      return res.status(400).json({ success: false, message: 'Seu perfil de usuário não foi encontrado no banco de dados. Por favor, verifique seu cadastro ou entre em contato com o suporte.' });
+    }
+    if (!creatorProfile.is_premium) {
+      return res.status(403).json({ success: false, message: 'Apenas usuários premium podem criar bolões.' });
+    }
+
+    // 3. Resolver e-mails dos participantes para UIDs
+    const participantEmails = grupo.participantes.map(p => p.email);
+    // Adiciona o e-mail do criador à lista se ainda não estiver presente
+    if (!participantEmails.includes(creatorEmail)) {
+        participantEmails.push(creatorEmail);
+    }
+
+    const participantUids = [];
+    for (const email of participantEmails) {
+      const uid = await getUidByEmail(email);
+      if (uid) {
+        participantUids.push(uid);
+      } else {
+        // Se algum e-mail de participante não corresponder a um UID, rejeita a criação
+        return res.status(400).json({ success: false, message: `Participante com e-mail "${email}" não encontrado ou não registrado. Todos os participantes devem ter uma conta.` });
+      }
+    }
+
+    if (participantUids.length < 1) {
       return res.status(400).json({
         success: false,
-        message: 'Um grupo deve ter pelo menos 2 participantes.'
+        message: 'Um grupo deve ter pelo menos 1 participantes registrados (incluindo o criador).'
       });
     }
 
-    console.log('Dados da aposta em grupo recebidos:', { jogo, concurso, numeros, grupo });
-    console.log('ID do usuário criador:', userId);
+    console.log('[createGroupBet] Dados da aposta em grupo recebidos:', { jogo, concurso, numeros, grupo });
+    console.log('[createGroupBet] UID do usuário criador:', creatorUid);
+    console.log('[createGroupBet] UIDs dos participantes:', participantUids);
 
-    // Preparar os dados da aposta - evitar possíveis problemas de tipo com os números
-    const betNumbers = Array.isArray(numeros) 
-      ? numeros 
+    // 4. Preparar números da aposta
+    const betNumbers = Array.isArray(numeros)
+      ? numeros
       : numeros.split(',').map(n => n.trim());
 
-    // Converter concurso para número para facilitar incremento
+    // 5. Converter número do concurso para inteiro
     const concursoNumero = parseInt(concurso);
     if (isNaN(concursoNumero)) {
       return res.status(400).json({
@@ -140,56 +209,61 @@ exports.createGroupBet = async (req, res) => {
       });
     }
 
-    // Determinar quantas apostas devem ser criadas
+    // 6. Determinar quantidade de apostas (para teimosinha)
     const quantidade = teimosinha ? parseInt(qtdTeimosinha) || 1 : 1;
     const apostas = [];
-    
+
     try {
-      // Referência para a coleção de apostas
       const betsRef = adminDatabase.ref('bets');
-      
-      // Criar cada aposta da teimosinha
+
+      // Preparar o mapa de UIDs para compatibilidade com as regras do Firebase
+      const participantUidsMap = {};
+      for (const uid of participantUids) {
+        participantUidsMap[uid] = true;
+      }
+
+      // 7. Criar cada aposta (incluindo teimosinha)
       for (let i = 0; i < quantidade; i++) {
-        // Dados da aposta em grupo
+        const newBetRef = betsRef.push();
+        const betId = newBetRef.key;
+
         const groupBetData = {
-          userId, // ID do criador
+          id: betId,
+          userId: creatorUid, // O UID do criador permanece aqui para facilitar a busca de apostas criadas
           jogo,
-          concurso: (concursoNumero + i).toString(), // Incrementar o número do concurso
+          concurso: (concursoNumero + i).toString(),
           numeros: betNumbers,
           teimosinha: teimosinha,
           qtdTeimosinha: quantidade,
           dataCriacao: new Date().toISOString(),
           status: 'pendente',
           tipo: 'grupo',
-          sequenciaTeimosinhaIndex: i, // Índice na sequência da teimosinha
-          sequenciaTeimosinhaTotal: quantidade, // Total de apostas na sequência
+          sequenciaTeimosinhaIndex: i,
+          sequenciaTeimosinhaTotal: quantidade,
           grupo: {
             nome: grupo.nome,
-            participantes: grupo.participantes,
-            criador: grupo.criador || userId,
-          consultado: false, // Inicializa como não consultado
-          resultadoSorteio: null // Inicializa sem resultado salvo
-          }
+            criadorUid: creatorUid, // Armazena o UID do criador dentro do objeto do grupo
+            participantesUids: participantUidsMap, // Armazena os UIDs de todos os participantes como um mapa
+            // Opcionalmente, você pode manter a lista original de nomes/e-mails para exibição no frontend
+            // participantes: grupo.participantes
+          },
+          consultado: false,
+          resultadoSorteio: null
         };
-        
-        // Salvar a aposta em grupo
-        const newBetRef = betsRef.push();
-        
-        // Adicionar o ID gerado aos dados da aposta
-        groupBetData.id = newBetRef.key;
-        
-        // Salvar a aposta
-        await newBetRef.set(groupBetData);
-        console.log(`Aposta em grupo ${i+1}/${quantidade} salva com sucesso:`, newBetRef.key);
 
-        // Atualizar o perfil do usuário criador com a nova aposta
-        const userBetsRef = adminDatabase.ref(`users/${userId}/bets/${newBetRef.key}`);
-        await userBetsRef.set(true);
-        
+        await newBetRef.set(groupBetData);
+        console.log(`[createGroupBet] Aposta em grupo ${i+1}/${quantidade} salva com sucesso:`, betId);
+
+        // 8. Atualizar o nó 'bets' de CADA participante para incluir esta aposta de grupo
+        for (const pUid of participantUids) {
+          const userBetsRef = adminDatabase.ref(`users/${pUid}/bets/${betId}`);
+          await userBetsRef.set(true); // Define como 'true' para indicar participação
+        }
+
         apostas.push(groupBetData);
       }
-      
-      console.log(`${quantidade} apostas teimosinha em grupo criadas com sucesso`);
+
+      console.log(`[createGroupBet] ${quantidade} apostas teimosinha em grupo criadas com sucesso`);
 
       return res.status(201).json({
         success: true,
@@ -197,7 +271,7 @@ exports.createGroupBet = async (req, res) => {
         bets: apostas
       });
     } catch (dbError) {
-      console.error('Erro ao salvar aposta em grupo no banco de dados:', dbError);
+      console.error('[createGroupBet] Erro ao salvar aposta em grupo no banco de dados:', dbError);
       return res.status(500).json({
         success: false,
         message: 'Erro ao salvar aposta em grupo no banco de dados',
@@ -205,11 +279,75 @@ exports.createGroupBet = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Erro ao registrar aposta em grupo:', error);
-    
+    console.error('[createGroupBet] Erro ao registrar aposta em grupo:', error);
     return res.status(500).json({
       success: false,
       message: 'Erro ao registrar aposta em grupo',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+};
+
+// Obter todas as apostas do usuário (modificado para incluir apostas de grupo onde o usuário é participante)
+exports.getUserBets = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    console.log('[getUserBets] Buscando apostas para o usuário:', userId);
+
+    // Referência para as apostas do usuário (tanto individuais quanto de grupo onde ele é participante)
+    const userBetsRef = adminDatabase.ref(`users/${userId}/bets`);
+
+    try {
+      const userBetsSnapshot = await userBetsRef.once('value');
+
+      if (!userBetsSnapshot.exists()) {
+        console.log('[getUserBets] Nenhuma aposta encontrada para o usuário:', userId);
+        return res.status(200).json({
+          success: true,
+          message: 'Nenhuma aposta encontrada',
+          bets: []
+        });
+      }
+
+      const betIds = Object.keys(userBetsSnapshot.val());
+      console.log(`[getUserBets] ${betIds.length} IDs de apostas encontradas para o usuário:`, userId);
+
+      const bets = [];
+      for (const betId of betIds) {
+        const betSnapshot = await adminDatabase.ref(`bets/${betId}`).once('value');
+        if (betSnapshot.exists()) {
+          const bet = betSnapshot.val();
+
+          // Enriquecer dados da aposta de grupo com a contagem de participantes para exibição no frontend
+          if (bet.tipo === 'grupo' && bet.grupo && bet.grupo.participantesUids) {
+            bet.participanteCount = Object.keys(bet.grupo.participantesUids).length;
+            // Opcionalmente, você pode buscar os nomes/e-mails dos participantes aqui
+            // se o frontend precisar deles para exibição detalhada, mas isso adiciona
+            // complexidade e mais chamadas ao banco de dados.
+            // Por enquanto, o frontend usará `participanteCount` e `grupo.nome`.
+          }
+
+          bets.push(bet);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        bets
+      });
+    } catch (dbError) {
+      console.error('[getUserBets] Erro ao acessar o banco de dados:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar apostas do banco de dados',
+        error: dbError.message
+      });
+    }
+  } catch (error) {
+    console.error('[getUserBets] Erro ao buscar apostas:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar apostas',
       error: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }
@@ -486,3 +624,4 @@ exports.checkAndSaveBetResult = async (req, res) => {
     });
   }
 };
+
