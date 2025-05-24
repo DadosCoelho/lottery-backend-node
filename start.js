@@ -36,7 +36,7 @@ server.on('error', (error) => {
 // Verificar se o servidor está online após 3 segundos
 setTimeout(() => {
   const http = require('http');
-  const PORT = process.env.PORT || 'https://lottery-backend-node.onrender.com'
+  const PORT = process.env.PORT || 3000;
   
   const req = http.request({
     host: 'localhost',
@@ -75,4 +75,4 @@ process.on('SIGTERM', () => {
   console.log('👋 Encerrando servidor...');
   server.kill();
   process.exit(0);
-}); 
+});

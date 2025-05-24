@@ -9,7 +9,7 @@ const { admin } = require('./config/firebase');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 'https://lottery-backend-node.onrender.com';
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
@@ -60,4 +60,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
   console.log(`Acesse: http://localhost:${PORT}`);
-}); 
+});
