@@ -1,4 +1,5 @@
 const { adminDatabase } = require('../config/firebase');
+const axios = require('axios'); // Certifique-se de que axios está importado
 
 // Criar uma nova aposta
 exports.createBet = async (req, res) => {
@@ -53,7 +54,9 @@ exports.createBet = async (req, res) => {
           dataCriacao: new Date().toISOString(),
           status: 'pendente',
           sequenciaTeimosinhaIndex: i, // Índice na sequência da teimosinha
-          sequenciaTeimosinhaTotal: quantidade // Total de apostas na sequência
+          sequenciaTeimosinhaTotal: quantidade,// Total de apostas na sequência
+          consultado: false, // Inicializa como não consultado
+          resultadoSorteio: null // Inicializa sem resultado salvo
         };
         
         // Salvar a aposta
@@ -163,7 +166,9 @@ exports.createGroupBet = async (req, res) => {
           grupo: {
             nome: grupo.nome,
             participantes: grupo.participantes,
-            criador: grupo.criador || userId
+            criador: grupo.criador || userId,
+          consultado: false, // Inicializa como não consultado
+          resultadoSorteio: null // Inicializa sem resultado salvo
           }
         };
         
@@ -340,3 +345,144 @@ exports.getBetDetails = async (req, res) => {
     });
   }
 }; 
+
+/// Helper function to normalize game name for external API
+const normalizarNomeJogo = (jogo) => {
+  const mapeamento = {
+    'mega-sena': 'megasena',
+    'lotofacil': 'lotofacil',
+    'quina': 'quina',
+    'lotomania': 'lotomania',
+    'timemania': 'timemania',
+    'dupla-sena': 'duplasena',
+    'dia-de-sorte': 'diadesorte',
+    'super-sete': 'supersete'
+  };
+  const jogoNormalizado = jogo.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  return mapeamento[jogoNormalizado] || 'megasena'; // Padrão para megasena
+};
+
+// Helper function to count matches between bet numbers and result numbers
+const getMatchCount = (betNumbers, resultNumbers) => {
+  // Garante que ambos são arrays de strings e compara
+  const betNums = Array.isArray(betNumbers) ? betNumbers.map(String) : [];
+  const resultNums = Array.isArray(resultNumbers) ? resultNumbers.map(String) : [];
+  
+  return betNums.filter(num => resultNums.includes(num)).length;
+};
+
+// Helper function to determine if a bet is winning based on match count and game type
+const isWinningBet = (matchCount, gameType) => {
+  // Definir regras de premiação baseadas no tipo de jogo
+  const premiationRules = {
+    'megasena': 4,      // 4 ou mais acertos (Quadra)
+    'lotofacil': 11,    // 11 ou mais acertos
+    'quina': 2,         // 2 ou mais acertos (Duque)
+    'lotomania': 15,    // 15 ou mais acertos
+    'timemania': 3,     // 3 ou mais acertos
+    'dupla-sena': 4,     // 4 ou mais acertos
+    'dia-de-sorte': 4,    // 4 ou mais acertos
+    'super-sete': 3       // 3 ou mais acertos
+  };
+  
+  // Obter o valor mínimo de acertos para o jogo, ou usar 4 como padrão
+  const minMatches = premiationRules[gameType] || 4;
+  
+  return matchCount >= minMatches;
+};
+
+// Verifica e salva o resultado da aposta
+exports.checkAndSaveBetResult = async (req, res) => {
+  try {
+    const { id: betId } = req.params;
+    const userId = req.user.uid;
+
+    if (!betId) {
+      return res.status(400).json({ success: false, message: 'ID da aposta não fornecido.' });
+    }
+
+    const betRef = adminDatabase.ref(`bets/${betId}`);
+    const betSnapshot = await betRef.once('value');
+
+    if (!betSnapshot.exists()) {
+      return res.status(404).json({ success: false, message: 'Aposta não encontrada.' });
+    }
+
+    const bet = betSnapshot.val();
+
+    if (bet.userId !== userId && (!req.user.role || req.user.role !== 'admin')) {
+      return res.status(403).json({ success: false, message: 'Acesso não autorizado a esta aposta.' });
+    }
+
+    let fetchedResultData = null;
+    let newBetStatus = bet.status; // Mantém o status atual por padrão
+
+    // Se o resultado já foi consultado e está salvo, usa os dados salvos
+    if (bet.consultado && bet.resultadoSorteio) {
+      console.log(`[Backend] Resultado para aposta ${betId} já consultado. Retornando dados salvos.`);
+      fetchedResultData = bet.resultadoSorteio;
+      newBetStatus = bet.status; // Mantém o status que já estava salvo
+    } else {
+      // Se não foi consultado, busca da API externa
+      console.log(`[Backend] Consultando resultado para aposta ${betId} da API externa.`);
+      const jogoNormalizado = normalizarNomeJogo(bet.jogo);
+      const externalApiUrl = `https://api.guidi.dev.br/loteria/${jogoNormalizado}/${bet.concurso}`;
+
+      const externalApiResponse = await axios.get(externalApiUrl);
+      const externalResult = externalApiResponse.data;
+
+      // Processa os dados da API externa para um formato consistente
+      fetchedResultData = {
+        concurso: externalResult.numero?.toString() || bet.concurso,
+        dataSorteio: externalResult.dataApuracao || new Date().toLocaleDateString('pt-BR'),
+        numeros: externalResult.listaDezenas || externalResult.dezenas || externalResult.dezenasSorteadasOrdemSorteio || [],
+        premiacoes: externalResult.listaRateioPremio ? externalResult.listaRateioPremio.map(p => ({
+          acertos: p.descricaoFaixa || `${p.faixa} acertos`,
+          ganhadores: p.numeroDeGanhadores || 0,
+          premio: p.valorPremio // Mantenha como número/string, o frontend formatará
+        })) : [],
+        acumulou: externalResult.acumulado === true || externalResult.valorAcumuladoProximoConcurso > 0,
+        valorAcumulado: externalResult.valorAcumulado || null,
+        proxConcurso: externalResult.numeroConcursoProximo || null,
+        dataProxConcurso: externalResult.dataProximoConcurso || null,
+        valorAcumuladoProximoConcurso: externalResult.valorAcumuladoProximoConcurso || null
+      };
+
+      // *** LÓGICA DE DETERMINAÇÃO DO STATUS MOVIDA PARA O BACKEND ***
+      const matchCount = getMatchCount(bet.numeros, fetchedResultData.numeros);
+      const isWinner = isWinningBet(matchCount, jogoNormalizado);
+      newBetStatus = isWinner ? 'prêmio' : 'finalizado';
+
+      // Atualiza a aposta no Firebase com o resultado, marca como consultado e ATUALIZA O STATUS
+      await betRef.update({
+        consultado: true,
+        resultadoSorteio: fetchedResultData,
+        status: newBetStatus, // Salva o status determinado
+        verificadoEm: new Date().toISOString() // Adiciona um timestamp de verificação
+      });
+
+      console.log(`[Backend] Resultado para aposta ${betId} salvo e status atualizado para '${newBetStatus}'.`);
+    }
+
+    // Retorna o resultado e o status FINAL da aposta
+    return res.status(200).json({ success: true, result: fetchedResultData, status: newBetStatus });
+
+  } catch (error) {
+    console.error('[Backend] Erro ao verificar e salvar resultado da aposta:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      return res.status(error.response.status).json({
+        success: false,
+        message: `Erro ao buscar resultado da loteria: ${error.response.statusText || error.message}`,
+        details: error.response.data
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno ao processar a solicitação.',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+};

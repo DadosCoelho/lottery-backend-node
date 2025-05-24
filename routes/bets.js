@@ -18,4 +18,7 @@ router.get('/', betController.getUserBets);
 // Obter detalhes de uma aposta específica
 router.get('/:id', betController.getBetDetails);
 
+// Verifica e salva o resultado de uma aposta específica
+router.get('/check-and-save-result/:id', betController.checkAndSaveBetResult);
+
 module.exports = router; 
