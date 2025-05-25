@@ -17,7 +17,7 @@ router.post('/set_role', authenticateToken, async (req, res) => {
   }
 
   try {
-    await admin.database().ref(`users/${uid}`).update({ role, is_premium });
+    await admin.database().ref(`users/${uid}/profile`).update({ role, is_premium });
     await admin.auth().setCustomUserClaims(uid, { role, is_premium });
     return res.status(200).json({ message: 'Papel atualizado com sucesso' });
   } catch (error) {
