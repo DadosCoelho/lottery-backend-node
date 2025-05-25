@@ -18,11 +18,18 @@ router.get('/users/profile', authenticate, authController.getUserProfile);
 router.get('/loteria/:jogo/:concurso', async (req, res) => {
   try {
     const { jogo, concurso } = req.params;
-    const endpoint = `/loteria/${jogo}/${concurso}`;
-    const response = await api.get(endpoint); // Vai para o backend, não para a API externa!
+    const url = `https://api.guidi.dev.br/loteria/${jogo}/${concurso}`;
+    const response = await axios.get(url);
     return res.json(response.data);
   } catch (error) {
-    return res.status(500).json({ error: 'Erro ao consultar API externa' });
+    console.error('Erro ao consultar API externa:', error?.response?.data || error.message);
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: error.response.data,
+        message: error.message
+      });
+    }
+    return res.status(500).json({ error: 'Erro ao consultar API externa', details: error.message });
   }
 });
 
