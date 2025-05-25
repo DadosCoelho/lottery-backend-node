@@ -156,8 +156,14 @@ exports.createGroupBet = async (req, res) => {
     }
 
     // 2. Verificar se o criador é um usuário premium e se o perfil existe no Realtime Database
-    const creatorProfileSnapshot = await adminDatabase.ref(`users/${creatorUid}`).once('value');
-    const creatorProfile = creatorProfileSnapshot.val();
+    let creatorProfileSnapshot = await adminDatabase.ref(`users/${creatorUid}/profile`).once('value');
+    let creatorProfile = creatorProfileSnapshot.val();
+
+    if (!creatorProfile) {
+      // Fallback para estrutura antiga
+      creatorProfileSnapshot = await adminDatabase.ref(`users/${creatorUid}`).once('value');
+      creatorProfile = creatorProfileSnapshot.val();
+    }
 
     if (!creatorProfile) {
       return res.status(400).json({ success: false, message: 'Seu perfil de usuário não foi encontrado no banco de dados. Por favor, verifique seu cadastro ou entre em contato com o suporte.' });
