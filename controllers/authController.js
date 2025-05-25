@@ -5,6 +5,7 @@ const {
   signOut 
 } = require('firebase/auth');
 const { ref, set, get } = require('firebase/database');
+const admin = require('firebase-admin');
 
 // Helper function to translate Firebase error codes to Portuguese
 const getErrorMessage = (errorCode) => {
@@ -82,30 +83,39 @@ exports.login = async (req, res) => {
 // Registro
 exports.register = async (req, res) => {
   try {
-    const { email, password, nome } = req.body;
-    
+    const { email, password, role = 'common', is_premium = false, name } = req.body;
+
     if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email e senha são obrigatórios' 
+      return res.status(400).json({
+        success: false,
+        message: 'Email e senha são obrigatórios'
       });
     }
-    
+
+    // Cria usuário no Firebase Auth (Client SDK)
     const userCredential = await createUserWithEmailAndPassword(clientAuth, email, password);
     const user = userCredential.user;
-    
-    // Salvar informações do usuário no Database
+
+    // Salva informações do usuário no Database
     const profileData = {
       email: user.email,
-      nome: nome || email.split('@')[0], // Usa parte do email como nome se não for fornecido
+      name: name || email.split('@')[0],
+      role,
+      is_premium,
       emailVerified: user.emailVerified,
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString()
     };
-    
+
     await set(ref(database, `users/${user.uid}/profile`), profileData);
     await set(ref(database, `users/${user.uid}/lastLogin`), new Date().toISOString());
-    
+
+    // Define custom claims (Admin SDK)
+    await admin.auth().setCustomUserClaims(user.uid, { role, is_premium });
+
+    // Obter token para o usuário
+    const token = await user.getIdToken();
+
     // Dados para enviar para o cliente
     const userData = {
       uid: user.uid,
@@ -113,10 +123,7 @@ exports.register = async (req, res) => {
       emailVerified: user.emailVerified,
       profile: profileData
     };
-    
-    // Obter token para o usuário
-    const token = await user.getIdToken();
-    
+
     return res.status(201).json({
       success: true,
       message: 'Usuário registrado com sucesso',
@@ -124,10 +131,10 @@ exports.register = async (req, res) => {
       token: token
     });
   } catch (error) {
-    console.error('Erro no registro:', error.code, error.message);
+    console.error('Erro no registro:', error.code, error.message || error);
     return res.status(400).json({
       success: false,
-      message: getErrorMessage(error.code)
+      message: getErrorMessage(error.code || error.message)
     });
   }
 };
@@ -196,4 +203,4 @@ exports.getUserProfile = async (req, res) => {
       error: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }
-}; 
+};
