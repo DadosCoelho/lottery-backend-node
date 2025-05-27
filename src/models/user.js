@@ -1,5 +1,5 @@
 class User {
-    constructor(uid, email, name, role = 'common', isPremium = false) {
+    constructor(uid, email, name, role = 'common', isPremium = true) {
       this.uid = uid;
       this.email = email;
       this.name = name;
